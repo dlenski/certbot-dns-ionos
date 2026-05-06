@@ -128,6 +128,8 @@ The file 'domain.tld.ini' must be replaced with the version of the example 'cred
 
 ## Changelog
 
+- 2026.05.06
+  - Continue supporting Certbot 2.9.0 (tested)
 - 2024.11.09
   - Update for Certbot 3.0.0
 - 2024.10.20

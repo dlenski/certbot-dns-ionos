@@ -4,8 +4,8 @@ from setuptools import find_packages
 version = '2024.11.09'
 
 install_requires = [
-    "acme>=3.0.0",
-    "certbot>=3.0.0",
+    "acme>=2.9.0",
+    "certbot>=2.9.0",
     "setuptools",
     "requests",
 ]

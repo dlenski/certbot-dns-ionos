@@ -22,9 +22,9 @@ class AuthenticatorTest(
     test_util.TempDirTestCase, dns_test_common.BaseAuthenticatorTest
 ):
     def setUp(self):
-        super(AuthenticatorTest, self).setUp()
-
         from certbot_dns_ionos.dns_ionos import Authenticator
+
+        super().setUp()
 
         path = os.path.join(self.tempdir, "file.ini")
         dns_test_common.write(
@@ -36,7 +36,6 @@ class AuthenticatorTest(
             path,
         )
 
-        super(AuthenticatorTest, self).setUp()
         self.config = mock.MagicMock(
             ionos_credentials=path, ionos_propagation_seconds=0
         )  # don't wait during tests
@@ -47,7 +46,8 @@ class AuthenticatorTest(
         # _get_ionos_client | pylint: disable=protected-access
         self.auth._get_ionos_client = mock.MagicMock(return_value=self.mock_client)
 
-    def test_perform(self):
+    @test_util.patch_display_util()
+    def test_perform(self, unused_mock_get_utility):
         self.auth.perform([self.achall])
 
         expected = [
@@ -63,8 +63,8 @@ class AuthenticatorTest(
         self.auth.cleanup([self.achall])
 
         expected = [
-            mock.call.del_txt_record(
-                DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY, mock.ANY
+            mock.call.del_matching_records(
+                DOMAIN, "_acme-challenge." + DOMAIN
             )
         ]
         self.assertEqual(expected, self.mock_client.mock_calls)
@@ -105,7 +105,7 @@ class ionosClientTest(unittest.TestCase):
                 ]
             }
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK", json=mock_response)
-            m.register_uri('PUT', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4/records/22af3414-abbe-9e11-5df5-66fbe8e334b4', status_code=200, reason="OK")
+            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK")
             try:
                 self.client.add_txt_record(
                     DOMAIN, self.record_name, self.record_content, self.record_ttl
@@ -135,7 +135,7 @@ class ionosClientTest(unittest.TestCase):
                     DOMAIN, self.record_name, self.record_content, self.record_ttl
                 )
 
-    def test_del_txt_record(self):
+    def test_del_matching_records(self):
         with requests_mock.Mocker() as m:
             mock_response = [{
                 "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
@@ -163,8 +163,8 @@ class ionosClientTest(unittest.TestCase):
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK", json=mock_response)
             m.register_uri('DELETE', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4/records/22af3414-abbe-9e11-5df5-66fbe8e334b4', status_code=200, reason="OK")
             try:
-                self.client.del_txt_record(
-                    DOMAIN, self.record_name, self.record_content, self.record_ttl
+                self.client.del_matching_records(
+                    DOMAIN, self.record_name
                 )
             except:
                     self.fail("No exeption expected")

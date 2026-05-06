@@ -28,6 +28,10 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Run tests
+        run: |
+          python -m certbot_dns_ionos.dns_ionos_test
+
       - name: Build source and wheel distributions
         run: |
           python -m pip install --upgrade pip build twine

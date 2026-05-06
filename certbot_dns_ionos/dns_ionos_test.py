@@ -1,6 +1,8 @@
 """Tests for certbot_dns_ionos.dns_ionos."""
 
 import unittest
+from uuid import uuid4
+from random import randint
 
 import mock
 import json
@@ -16,6 +18,12 @@ from certbot.tests import util as test_util
 FAKE_PREFIX = "prefix"
 FAKE_SECRET = "secret"
 FAKE_ENDPOINT = "mock://endpoint"
+
+FAKE_RECORD_NAME = "foo" + str(randint(10000, 99999))
+FAKE_RECORD_CONTENT = "bar" + str(randint(10000, 99999))
+FAKE_RECORD_TTL = 42
+FAKE_ZONE_ID = str(uuid4())
+FAKE_RECORD_ID = str(uuid4())
 
 
 class AuthenticatorTest(
@@ -71,10 +79,6 @@ class AuthenticatorTest(
 
 
 class ionosClientTest(unittest.TestCase):
-    record_name = "foo"
-    record_content = "bar"
-    record_ttl = 42
-
     def setUp(self):
         from certbot_dns_ionos.dns_ionos import _ionosClient
         self.client = _ionosClient(FAKE_ENDPOINT, FAKE_PREFIX, FAKE_SECRET)
@@ -82,18 +86,18 @@ class ionosClientTest(unittest.TestCase):
     def test_add_txt_record(self):
         with requests_mock.Mocker() as m:
             mock_response = [{
-                "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
-                "name": "example.com",
+                "id": FAKE_ZONE_ID,
+                "name": DOMAIN,
                 "type": "NATIVE"}]
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=200, reason="OK", json=mock_response)
             mock_response = {
-                "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
-                "name": "example.com",
+                "id": FAKE_ZONE_ID,
+                "name": DOMAIN,
                 "type": "NATIVE",
                 "records": [
                     {
-                    "id": "22af3414-abbe-9e11-5df5-66fbe8e334b4",
-                    "name": "foo",
+                    "id": FAKE_RECORD_ID,
+                    "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
                     "content": "string",
@@ -104,25 +108,22 @@ class ionosClientTest(unittest.TestCase):
                     }
                 ]
             }
-            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK", json=mock_response)
-            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK")
-            try:
-                self.client.add_txt_record(
-                    DOMAIN, self.record_name, self.record_content, self.record_ttl
-                )
-            except:
-                self.fail("No exeption expected")
+            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK", json=mock_response)
+            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK")
+            self.client.add_txt_record(
+                DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
+            )
 
     def test_add_txt_record_fail_to_find_domain(self):
         with requests_mock.Mocker() as m:
             mock_response = [{
-                "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
-                "name": "test.com",
+                "id": FAKE_ZONE_ID,
+                "name": "a-different-" + DOMAIN,
                 "type": "NATIVE"}]
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=200, reason="OK", json=mock_response)
             with self.assertRaises(errors.PluginError) as context:
                 self.client.add_txt_record(
-                    DOMAIN, self.record_name, self.record_content, self.record_ttl
+                    DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
                 )
 
     
@@ -132,24 +133,24 @@ class ionosClientTest(unittest.TestCase):
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=401, reason="Unauthorized", json=mock_response)
             with self.assertRaises(errors.PluginError) as context:
                 self.client.add_txt_record(
-                    DOMAIN, self.record_name, self.record_content, self.record_ttl
+                    DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
                 )
 
     def test_del_matching_records(self):
         with requests_mock.Mocker() as m:
             mock_response = [{
-                "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
-                "name": "example.com",
+                "id": FAKE_ZONE_ID,
+                "name": DOMAIN,
                 "type": "NATIVE"}]
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=200, reason="OK", json=mock_response)
             mock_response = {
-                "id": "11af3414-ebba-11e9-8df5-66fbe8a334b4",
-                "name": "example.com",
+                "id": FAKE_ZONE_ID,
+                "name": DOMAIN,
                 "type": "NATIVE",
                 "records": [
                     {
-                    "id": "22af3414-abbe-9e11-5df5-66fbe8e334b4",
-                    "name": "foo",
+                    "id": FAKE_RECORD_ID,
+                    "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
                     "content": "string",
@@ -160,15 +161,11 @@ class ionosClientTest(unittest.TestCase):
                     }
                 ]
             }
-            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4', status_code=200, reason="OK", json=mock_response)
-            m.register_uri('DELETE', 'mock://endpoint/dns/v1/zones/11af3414-ebba-11e9-8df5-66fbe8a334b4/records/22af3414-abbe-9e11-5df5-66fbe8e334b4', status_code=200, reason="OK")
-            try:
-                self.client.del_matching_records(
-                    DOMAIN, self.record_name
-                )
-            except:
-                    self.fail("No exeption expected")
-
+            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK", json=mock_response)
+            m.register_uri('DELETE', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID + '/records/' + FAKE_RECORD_ID, status_code=200, reason="OK")
+            self.client.del_matching_records(
+                DOMAIN, FAKE_RECORD_NAME
+            )
 
 
 if __name__ == "__main__":

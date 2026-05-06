@@ -8,6 +8,9 @@ install_requires = [
     "certbot>=3.0.0",
     "setuptools",
     "requests",
+]
+
+tests_require = [
     "mock",
     "requests-mock",
 ]
@@ -59,4 +62,7 @@ setup(
         ]
     },
     test_suite="certbot_dns_ionos",
+    extras_require={
+        "test": tests_require,
+    }
 )

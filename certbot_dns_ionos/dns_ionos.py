@@ -1,5 +1,4 @@
 """DNS Authenticator for IONOS."""
-import json
 import logging
 
 import requests
@@ -74,9 +73,8 @@ class _ionosClient(object):
     def __init__(self, endpoint, prefix, secret):
         logger.debug("creating ionosclient")
         self.endpoint = endpoint
-        self.headers = {}
-        self.headers['accept'] = 'application/json'
-        self.headers['X-API-Key'] = prefix + '.' + secret
+        self.session = requests.session()
+        self.session.headers['X-API-Key'] = prefix + '.' + secret
 
     def _find_managed_zone_id(self, domain):
         """
@@ -101,42 +99,24 @@ class _ionosClient(object):
                 return zone['id'], zone['name']
         return None, None
 
-    def _api_request(self, type, action, data = None):
+    def _api_request(self, type, action, *args, **kwargs):
         url = self._get_url(action)
-        resp = None
-        if type == 'get':
-            resp = requests.get(url, headers=self.headers)
-        elif type == 'put':
-            headers = self.headers
-            headers['Content-Type'] = 'application/json'
-            resp = requests.put(url, headers=headers, data=json.dumps(data))
-        elif type == 'patch':
-            headers = self.headers
-            headers['Content-Type'] = 'application/json'
-            resp = requests.patch(url, headers=headers, data=json.dumps(data))
-        elif type == 'delete':
-            resp = requests.delete(url, headers=self.headers)
-        else:
-            raise errors.PluginError(
-                "HTTP Error during request. Unknown type {0}".format(type)
-            )
-        logger.debug("API request to URL: %s", url)
-        if resp.status_code != 200:
-            content = json.loads(resp.content) # on error content is array with 1 element
-            error_msg = "" if content['message'] is None else content['message']
+        resp = self.session.request(type.upper(), url, *args, **kwargs)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as exc:
+            error_msg = resp.json()['message']
             raise errors.PluginError(
                 "HTTP Error during request {0}({1}): {2}".format(
                     resp.reason, resp.status_code, error_msg)
-            )
-        result = None
+            ) from exc
         if type == 'get':
             try:
-                result = resp.json()
-            except:
+                return resp.json()
+            except Exception as exc:
                 raise errors.PluginError(
-                    "API response with non JSON: {0}".format(resp.text)
-                )
-        return result
+                    "Non-JSON API response: {0}".format(resp.text)
+                ) from exc
 
     def _get_url(self, action):
         return "{0}{1}".format(self.endpoint, action)
@@ -181,7 +161,7 @@ class _ionosClient(object):
         records = []
         records.append(data)
         logger.debug("insert with data: %s", data)
-        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), data=records)
+        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), json=records)
 
     def _delete_txt_record(self, zone_id, primary_id):
         logger.debug("delete id: %s", primary_id)
@@ -261,7 +241,7 @@ class _ionosClient(object):
         data['prio'] = 0
         existing_records.append(data)
         logger.debug("insert with data: %s", existing_records)
-        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), data=existing_records)
+        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), json=existing_records)
 
     def del_matching_records(self, domain, record_name):
         """

@@ -7,7 +7,7 @@ install_requires = [
     "acme>=2.9.0",
     "certbot>=2.9.0",
     "setuptools",
-    "requests",
+    "requests>=2.4.2",
 ]
 
 tests_require = [

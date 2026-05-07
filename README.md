@@ -5,15 +5,20 @@
 ![Ionos](https://www.ionos.co.uk/newsroom/wp-content/uploads/sites/7/2021/12/LOGO_IONOS_Blue_RGB-1.png)
 
 This plugin automates the process of completing a ``dns-01`` challenge by
-creating, and subsequently removing, TXT records using the [IONOS Remote API](https://developer.hosting.ionos.com/docs/dns).
+creating, and subsequently removing, TXT records using the
+[IONOS REST API for DNS](https://developer.hosting.ionos.com/docs/dns).
+
+This plugin works only with Ionos's hosted DNS, not with Ionos's Cloud DNS
+services which allow to customers to run their own DNS servers.  For Ionos
+Cloud DNS, see the
+[certbot-dns-ionos-cloud](https://github.com/ionos-cloud/certbot-dns-ionos-cloud)
+plugin.
 
 ## Configuration of IONOS
 
-In the `System -> Remote Users` you have to have a user, with the following rights
-
-- Client Functions
-- DNS zone functions
-- DNS txt functions
+Ionos REST API keys may be obtained from https://developer.hosting.ionos.com/keys.
+Your Ionos TLD may differ depending on your billing location, for example
+ionos.ca, ionos.fr, ionos.de instead of ionos.com.
 
 ## Installation
 
@@ -130,6 +135,9 @@ The file 'domain.tld.ini' must be replaced with the version of the example 'cred
 
 - 2026.05.06
   - Continue supporting Certbot 2.9.0 (tested)
+  - Fix race conditions in TXT record manipulation
+  - Fix and update unit tests
+  - Simplify and modernize code
 - 2024.11.09
   - Update for Certbot 3.0.0
 - 2024.10.20

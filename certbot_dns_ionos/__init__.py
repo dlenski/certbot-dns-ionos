@@ -1,7 +1,12 @@
 """
 The `~certbot_dns_ionos.dns_ionos` plugin automates the process of
 completing a ``dns-01`` challenge (`~acme.challenges.DNS01`) by creating, and
-subsequently removing, TXT records using the ionos REST API.
+subsequently removing, TXT records using the Ionos REST API for DNS.
+
+This plugin works only with Ionos's hosted DNS, not with Ionos's Cloud DNS
+services which allow to customers to run their own DNS servers. For Ionos
+Cloud DNS, see the `certbot-dns-ionos-cloud
+<https://github.com/ionos-cloud/certbot-dns-ionos-cloud>` plugin.
 
 
 Named Arguments
@@ -20,18 +25,20 @@ Named Arguments
 Credentials
 -----------
 
-Use of this plugin requires a configuration file containing ionos Remote API
-credentials, obtained from your DNS provider
-`System > Remote Users`.
+Use of this plugin requires a configuration file containing Ionos REST API
+credentials, obtained from https://developer.hosting.ionos.com/keys.
+
+Your Ionos TLD may differ depending on your billing location, for example
+ionos.ca, ionos.fr, ionos.de instead of ionos.com.
 
 .. code-block:: ini
    :name: credentials.ini
    :caption: Example credentials file:
 
-   # ionos API credentials used by Certbot
+   # Ionos API credentials used by Certbot
    dns_ionos_username = myispremoteuser
    dns_ionos_password = mysecretpassword
-   dns_ionos_endpoint = https://localhost:8080
+   dns_ionos_endpoint = https://api.hosting.ionos.com
 
 The path to this file can be provided interactively or using the
 ``--dns-ionos-credentials`` command-line argument. Certbot records the path

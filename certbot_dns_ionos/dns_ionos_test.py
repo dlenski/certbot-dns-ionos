@@ -138,7 +138,7 @@ class ionosClientTest(unittest.TestCase):
     
     def test_add_txt_record_fail_to_authenticate(self):
         with requests_mock.Mocker() as m:
-            mock_response = {'message': 'Missing or invalid API key.'}
+            mock_response = [{'message': 'Missing or invalid API key.'}]
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=401, reason="Unauthorized", json=mock_response)
             with self.assertRaises(errors.PluginError) as context:
                 self.client.add_txt_record(

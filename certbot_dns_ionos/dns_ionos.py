@@ -105,7 +105,7 @@ class _ionosClient(object):
         try:
             resp.raise_for_status()
         except requests.exceptions.HTTPError as exc:
-            error_msg = resp.json()['message']
+            error_msg = resp.json()[0]['message']
             raise errors.PluginError(
                 "HTTP Error during request {0}({1}): {2}".format(
                     resp.reason, resp.status_code, error_msg)

@@ -54,7 +54,7 @@ class Authenticator(dns_common.DNSAuthenticator):
 
     def _cleanup(self, domain, validation_name, validation):
         self._get_ionos_client().del_matching_records(
-            domain, validation_name
+            domain, validation_name, validation
             )
 
     def _get_ionos_client(self):
@@ -178,10 +178,9 @@ class _ionosClient(object):
         logger.debug("insert with data: %s", records)
         self._api_request(type='patch', action=f'/dns/v1/zones/{zone_id}', json=records)
 
-    def del_matching_records(self, domain, record_name):
+    def del_matching_records(self, domain, record_name, validation):
         """
-        Deletes any TXT records with matching record_name. Loops through all
-            records with that name and deletes them.
+        Deletes any TXT records with matching record_name and validation content.
         """
         zone_id, zone_name = self._find_managed_zone_id(domain)
         if zone_id is None:
@@ -189,6 +188,7 @@ class _ionosClient(object):
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
         entries = self.get_txt_records(zone_id, record_name)
         for entry in entries:
-            primary_id = entry['id']
-            logger.debug("delete id: %s", primary_id)
-            self._api_request(type='delete', action=f'/dns/v1/zones/{zone_id}/records/{primary_id}')
+            if entry['content'] == validation:
+                primary_id = entry['id']
+                logger.debug("delete id: %s", primary_id)
+                self._api_request(type='delete', action=f'/dns/v1/zones/{zone_id}/records/{primary_id}')

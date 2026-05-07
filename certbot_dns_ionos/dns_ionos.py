@@ -1,4 +1,5 @@
 """DNS Authenticator for IONOS."""
+from typing import Tuple, Any, Optional
 import logging
 
 import requests
@@ -19,22 +20,22 @@ class Authenticator(dns_common.DNSAuthenticator):
     ttl = 60
 
     def __init__(self, *args, **kwargs):
-        super(Authenticator, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.credentials = None
         self.client = None
 
     @classmethod
-    def add_parser_arguments(cls, add, default_propagation_seconds=10) -> None:
+    def add_parser_arguments(cls, add, default_propagation_seconds: int = 10) -> None:
         super().add_parser_arguments(add, default_propagation_seconds)
         add("credentials", help="IONOS credentials INI file.")
 
-    def more_info(self):  # pylint: disable=missing-docstring,no-self-use
+    def more_info(self) -> str:  # pylint: disable=missing-docstring,no-self-use
         return (
             "This plugin configures a DNS TXT record to respond to a dns-01 challenge using "
             "the IONOS Remote REST API."
         )
 
-    def _setup_credentials(self):
+    def _setup_credentials(self) -> None:
         self.credentials = self._configure_credentials(
             "credentials",
             "IONOS credentials INI file",
@@ -53,11 +54,11 @@ class Authenticator(dns_common.DNSAuthenticator):
         )
 
     def _cleanup(self, domain, validation_name, validation):
-        self._get_ionos_client().del_matching_record(
+        self._get_ionos_client().del_matching_txt_record(
             domain, validation_name, validation
             )
 
-    def _get_ionos_client(self):
+    def _get_ionos_client(self) -> '_ionosClient':
         if self.client is None:
             self.client = _ionosClient(
                 self.credentials.conf("endpoint"),
@@ -67,36 +68,37 @@ class Authenticator(dns_common.DNSAuthenticator):
         return self.client
 
 
-class _ionosClient(object):
+class _ionosClient:
     """
     Encapsulates all communication with the IONOS Remote REST API.
     """
 
-    def __init__(self, endpoint, prefix, secret):
+    def __init__(self, endpoint: str, prefix: str, secret: str):
         logger.debug("creating ionosclient")
         self.endpoint = endpoint
         self.session = requests.session()
         self.session.headers['X-API-Key'] = f"{prefix}.{secret}"
 
-    def _find_managed_zone_id(self, domain):
+    def _find_managed_zone_id(self, domain: str) -> Tuple[str, str]:
         """
-        Find the managed zone for a given domain.
+        Find the Ionos DNS zone ID for a given domain. Raises a PluginError if not found.
 
         :param str domain: The domain for which to find the managed zone.
-        :returns: The ID of the managed zone, if found.
-        :rtype: str zone id, str zone name
+        :returns: The ID and name of the managed zone.
+        :raises certbot.errors.PluginError: if the domain is not found.
         """
         logger.debug("get zones")
         zones = self._api_request(type='get', action="/dns/v1/zones")
         logger.debug("zones found %s", zones)
-        for zone in zones:
+        try:
             # the domain should either be an exact match or a subdomain of
             # the zone name
-            if domain == zone['name'] or domain.endswith(f".{zone['name']}"):
-                return zone['id'], zone['name']
-        return None, None
+            return next((zone['id'], zone['name']) for zone in zones
+                        if domain == zone['name'] or domain.endswith(f".{zone['name']}"))
+        except StopIteration:
+            raise errors.PluginError(f"Ionos DNS account does not have a zone for {domain}")
 
-    def _api_request(self, type, action, *args, **kwargs):
+    def _api_request(self, type: str, action: str, *args, **kwargs) -> Any:
         url = self._get_url(action)
         resp = self.session.request(type.upper(), url, *args, **kwargs)
         try:
@@ -114,10 +116,10 @@ class _ionosClient(object):
                     f"Non-JSON API response: {resp.text}"
                 ) from exc
 
-    def _get_url(self, action):
+    def _get_url(self, action: str) -> str:
         return self.endpoint + action
 
-    def add_txt_record(self, domain, record_name, record_content, record_ttl):
+    def add_txt_record(self, domain: str, record_name: str, record_content: str, record_ttl: int) -> None:
         """
         Add a TXT record using the supplied information.
 
@@ -128,12 +130,10 @@ class _ionosClient(object):
         :raises certbot.errors.PluginError: if an error occurs communicating with the IONOS API
         """
         zone_id, zone_name = self._find_managed_zone_id(domain)
-        if zone_id is None:
-            raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
         existing_id = self.get_matching_txt_record(zone_id, record_name, record_content)
         if existing_id is not None:
-            # This can only plausibly result from a previous attempt 
+            # This can only plausibly result from a previous attempt
             # at the same validation having aborted without cleanup.
             logger.warning(f"already there, id {existing_id}")
         else:
@@ -141,18 +141,14 @@ class _ionosClient(object):
             logger.debug("insert new txt record with data: %s", record)
             self._api_request(type='post', action=f'/dns/v1/zones/{zone_id}/records', json=record)
 
-    def get_matching_txt_record(self, zone_id, record_name, record_content):
+    def get_matching_txt_record(self, zone_id: str, record_name: str, record_content: str) -> Optional[int]:
         """
-        Find the ID of an existing TXT records from the RRset for the
-        given record name and content.
-
-        If an error occurs while requesting the record set, it is suppressed
-        and None is returned.
+        Return the ID of an existing TXT record from the RRset for the
+        given record name and content, or None if not found.
 
         :param str zone_id: The ID of the managed zone.
         :param str record_name: The record name (typically beginning with '_acme-challenge.').
         :param str record_content: The expected validation content.
-
         :returns: record_id if found, otherwise None
         """
         zone_data = self._api_request(type='get', action=f'/dns/v1/zones/{zone_id}')
@@ -163,24 +159,24 @@ class _ionosClient(object):
             ):
                 # The "content" field has an extra set of quotes glommed onto it when
                 # retrieved via the API, but these are not stripped when uploaded. A
-                # roundtripping bug from Ionos. Remove these extra quotes
+                # roundtripping bug from Ionos.
                 content = entry["content"]
-                if len(content) >= 2 and content[0] == content[-1] == '"':
-                    content = content[1:-1]
-                else:
-                    logger.warning("expected extra redundant quotes on TXT record contents, but not found")
-                if content == record_content:
+                if content == f'"{record_content}"':
+                    return entry["id"]
+                elif content == record_content:
+                    logger.warning('Found matching TXT record without extra \" wrapping it. '
+                                   'Ionos API may have changed.')
                     return entry["id"]
 
-    def del_matching_record(self, domain, record_name, validation):
+    def del_matching_txt_record(self, domain: str, record_name: str, validation: str) -> Optional[int]:
         """
-        Deletes any TXT record with matching record_name and validation content.
+        Deletes any TXT record with matching record_name and validation content,
+        returning the ID of the deleted record if it was found.
         """
         zone_id, zone_name = self._find_managed_zone_id(domain)
-        if zone_id is None:
-            raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
         primary_id = self.get_matching_txt_record(zone_id, record_name, validation)
         if primary_id is not None:
             logger.debug("delete id: %s", primary_id)
             self._api_request(type='delete', action=f'/dns/v1/zones/{zone_id}/records/{primary_id}')
+            return primary_id

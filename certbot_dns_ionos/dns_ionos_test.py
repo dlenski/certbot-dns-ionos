@@ -73,7 +73,7 @@ class AuthenticatorTest(
         self.auth.cleanup([self.achall])
 
         expected = [
-            mock.call.del_matching_record(
+            mock.call.del_matching_txt_record(
                 DOMAIN, f"_acme-challenge.{DOMAIN}", mock.ANY
             )
         ]
@@ -131,7 +131,7 @@ class ionosClientTest(unittest.TestCase):
                     DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
                 )
 
-    
+
     def test_add_txt_record_fail_to_authenticate(self):
         with requests_mock.Mocker() as m:
             mock_response = [{'message': 'Missing or invalid API key.'}]
@@ -173,7 +173,7 @@ class ionosClientTest(unittest.TestCase):
             # Only the record with content matching this validation should be deleted,
             # not the other preexisting record:
             m.register_uri('DELETE', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}/records/{FAKE_RECORD_ID}", status_code=200, reason="OK")
-            self.client.del_matching_record(
+            self.client.del_matching_txt_record(
                 DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT
             )
 

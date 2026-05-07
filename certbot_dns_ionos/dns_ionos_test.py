@@ -21,6 +21,7 @@ FAKE_ENDPOINT = "mock://endpoint"
 
 FAKE_RECORD_NAME = "foo" + str(randint(10000, 99999))
 FAKE_RECORD_CONTENT = "bar" + str(randint(10000, 99999))
+FAKE_PREEXISTING_RECORD_CONTENT = "baz" + str(randint(10000, 99999))
 FAKE_RECORD_TTL = 42
 FAKE_ZONE_ID = str(uuid4())
 FAKE_RECORD_ID = str(uuid4())
@@ -100,8 +101,8 @@ class ionosClientTest(unittest.TestCase):
                     "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
-                    "content": "\"string\"",
-                    "changeDate": "string",
+                    "content": "\"" + FAKE_PREEXISTING_RECORD_CONTENT + "\"",
+                    "changeDate": "1900-01-01T00:00:00.000Z",
                     "ttl": 0,
                     "prio": 0,
                     "disabled": False
@@ -109,7 +110,15 @@ class ionosClientTest(unittest.TestCase):
                 ]
             }
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK", json=mock_response)
-            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK")
+            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK",
+                additional_matcher=lambda req: all(
+                    r["name"] == FAKE_RECORD_NAME and r["type"] == "TXT"
+                    and (r["content"], r["ttl"]) in (
+                        (FAKE_PREEXISTING_RECORD_CONTENT, 0),
+                        (FAKE_RECORD_CONTENT, FAKE_RECORD_TTL)
+                    )
+                    for r in req.json())
+            )
             self.client.add_txt_record(
                 DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
             )

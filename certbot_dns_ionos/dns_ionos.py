@@ -21,6 +21,7 @@ class Authenticator(dns_common.DNSAuthenticator):
     def __init__(self, *args, **kwargs):
         super(Authenticator, self).__init__(*args, **kwargs)
         self.credentials = None
+        self.client = None
 
     @classmethod
     def add_parser_arguments(cls, add):  # pylint: disable=arguments-differ
@@ -45,6 +46,7 @@ class Authenticator(dns_common.DNSAuthenticator):
                 "secret": "Secret for IONOS Remote API.",
             },
         )
+        self.client = None   # recreate client after credential change
 
     def _perform(self, domain, validation_name, validation):
         logger.debug(f"_perform called with: domain: {domain}, validation_name: {validation_name}, validation: {validation}")
@@ -58,11 +60,13 @@ class Authenticator(dns_common.DNSAuthenticator):
             )
 
     def _get_ionos_client(self):
-        return _ionosClient(
-            self.credentials.conf("endpoint"),
-            self.credentials.conf("prefix"),
-            self.credentials.conf("secret"),
-        )
+        if self.client is None:
+            self.client = _ionosClient(
+                self.credentials.conf("endpoint"),
+                self.credentials.conf("prefix"),
+                self.credentials.conf("secret"),
+            )
+        return self.client
 
 
 class _ionosClient(object):

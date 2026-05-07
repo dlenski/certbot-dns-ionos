@@ -207,10 +207,14 @@ class _ionosClient(object):
                 entry["name"] == record_name
                 and entry["type"] == "TXT"
             ):
-                #seems "content" is double quoted. Remove quotes
+                # The "content" field has an extra set of quotes glommed onto it when
+                # retrieved via the API, but these are not stripped when uploaded. A
+                # roundtripping bug from Ionos. Remove these extra quotes
                 content = entry["content"]
-                content = content.lstrip('\"')
-                content = content.rstrip('\"')
+                if len(content) >= 2 and content[0] == content[-1] == '"':
+                    entry["content"] = content[1:-1]
+                else:
+                    logger.warning("expected extra redundant quotes on TXT record contents, but not found")
                 return content, entry["id"]
         return None, None
 

@@ -24,10 +24,8 @@ class Authenticator(dns_common.DNSAuthenticator):
         self.client = None
 
     @classmethod
-    def add_parser_arguments(cls, add):  # pylint: disable=arguments-differ
-        super(Authenticator, cls).add_parser_arguments(
-            add, default_propagation_seconds=10
-        )
+    def add_parser_arguments(cls, add, default_propagation_seconds=10) -> None:
+        super().add_parser_arguments(add, default_propagation_seconds)
         add("credentials", help="IONOS credentials INI file.")
 
     def more_info(self):  # pylint: disable=missing-docstring,no-self-use

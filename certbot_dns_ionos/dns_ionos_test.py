@@ -25,6 +25,7 @@ FAKE_PREEXISTING_RECORD_CONTENT = f"baz{randint(10000, 99999)}"
 FAKE_RECORD_TTL = 42
 FAKE_ZONE_ID = str(uuid4())
 FAKE_RECORD_ID = str(uuid4())
+FAKE_PREEXISTING_RECORD_ID = str(uuid4())
 
 
 class AuthenticatorTest(
@@ -72,8 +73,8 @@ class AuthenticatorTest(
         self.auth.cleanup([self.achall])
 
         expected = [
-            mock.call.del_matching_records(
-                DOMAIN, f"_acme-challenge.{DOMAIN}"
+            mock.call.del_matching_record(
+                DOMAIN, f"_acme-challenge.{DOMAIN}", mock.ANY
             )
         ]
         self.assertEqual(expected, self.mock_client.mock_calls)
@@ -97,7 +98,7 @@ class ionosClientTest(unittest.TestCase):
                 "type": "NATIVE",
                 "records": [
                     {
-                    "id": FAKE_RECORD_ID,
+                    "id": FAKE_PREEXISTING_RECORD_ID,
                     "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
@@ -110,15 +111,10 @@ class ionosClientTest(unittest.TestCase):
                 ]
             }
             m.register_uri('GET', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK", json=mock_response)
-            m.register_uri('PATCH', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK",
-                additional_matcher=lambda req: all(
-                    r["name"] == FAKE_RECORD_NAME and r["type"] == "TXT"
-                    and (r["content"], r["ttl"]) in (
-                        (FAKE_PREEXISTING_RECORD_CONTENT, 0),
-                        (FAKE_RECORD_CONTENT, FAKE_RECORD_TTL)
-                    )
-                    for r in req.json())
-            )
+            m.register_uri('POST', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}/records", status_code=200, reason="OK",
+                additional_matcher=lambda req: req.json() == [dict(
+                    name=FAKE_RECORD_NAME, type="TXT", ttl=FAKE_RECORD_TTL,
+                    content=FAKE_RECORD_CONTENT)])
             self.client.add_txt_record(
                 DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
             )
@@ -145,7 +141,7 @@ class ionosClientTest(unittest.TestCase):
                     DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT, FAKE_RECORD_TTL
                 )
 
-    def test_del_matching_records(self):
+    def test_del_matching_record(self):
         with requests_mock.Mocker() as m:
             mock_response = [{
                 "id": FAKE_ZONE_ID,
@@ -158,22 +154,27 @@ class ionosClientTest(unittest.TestCase):
                 "type": "NATIVE",
                 "records": [
                     {
-                    "id": FAKE_RECORD_ID,
+                    "id": fid,
                     "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
-                    "content": "\"string\"",
+                    "content": "\"{frc}\"",
                     "changeDate": "string",
                     "ttl": 0,
                     "prio": 0,
                     "disabled": False
-                    }
+                    } for (fid, frc) in (
+                        (FAKE_PREEXISTING_RECORD_ID, FAKE_PREEXISTING_RECORD_CONTENT),
+                        (FAKE_RECORD_ID, FAKE_RECORD_CONTENT),
+                    )
                 ]
             }
             m.register_uri('GET', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK", json=mock_response)
+            # Only the record with content matching this validation should be deleted,
+            # not the other preexisting record:
             m.register_uri('DELETE', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}/records/{FAKE_RECORD_ID}", status_code=200, reason="OK")
-            self.client.del_matching_records(
-                DOMAIN, FAKE_RECORD_NAME
+            self.client.del_matching_record(
+                DOMAIN, FAKE_RECORD_NAME, FAKE_RECORD_CONTENT
             )
 
 

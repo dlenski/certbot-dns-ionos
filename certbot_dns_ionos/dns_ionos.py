@@ -53,8 +53,8 @@ class Authenticator(dns_common.DNSAuthenticator):
         )
 
     def _cleanup(self, domain, validation_name, validation):
-        self._get_ionos_client().del_matching_records(
-            domain, validation_name
+        self._get_ionos_client().del_matching_record(
+            domain, validation_name, validation
             )
 
     def _get_ionos_client(self):
@@ -129,28 +129,29 @@ class _ionosClient(object):
         if zone_id is None:
             raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
-        entries = list(self.get_txt_records(zone_id, record_name))
-        if next((e['id'] for e in entries if e['content'] == record_content), None):
-            logger.info(f"already there, id {id}")
+        existing_id = self.get_matching_txt_record(zone_id, record_name, record_content)
+        if existing_id is not None:
+            # This can only plausibly result from a previous attempt 
+            # at the same validation having aborted without cleanup.
+            logger.warning(f"already there, id {existing_id}")
         else:
-            if entries:
-                logger.info("adding additional record")
-            else:
-                logger.info("insert new txt record")
-            entries.append(dict(content=record_content, ttl=record_ttl, name=record_name, type='TXT'))
-            self.set_txt_records(zone_id, entries)
+            record = [dict(content=record_content, ttl=record_ttl, name=record_name, type='TXT')]
+            logger.debug("insert new txt record with data: %s", record)
+            self._api_request(type='post', action=f'/dns/v1/zones/{zone_id}/records', json=record)
 
-    def get_txt_records(self, zone_id, record_name):
+    def get_matching_txt_record(self, zone_id, record_name, record_content):
         """
-        Get existing TXT records from the RRset for the record name.
+        Find the ID of an existing TXT records from the RRset for the
+        given record name and content.
 
         If an error occurs while requesting the record set, it is suppressed
         and None is returned.
 
         :param str zone_id: The ID of the managed zone.
         :param str record_name: The record name (typically beginning with '_acme-challenge.').
+        :param str record_content: The expected validation content.
 
-        :yields: `dict` containing only the fields required to recreate each record
+        :returns: record_id if found, otherwise None
         """
         zone_data = self._api_request(type='get', action=f'/dns/v1/zones/{zone_id}')
         for entry in zone_data['records']:
@@ -163,32 +164,21 @@ class _ionosClient(object):
                 # roundtripping bug from Ionos. Remove these extra quotes
                 content = entry["content"]
                 if len(content) >= 2 and content[0] == content[-1] == '"':
-                    entry["content"] = content[1:-1]
+                    content = content[1:-1]
                 else:
                     logger.warning("expected extra redundant quotes on TXT record contents, but not found")
-                yield entry
+                if content == record_content:
+                    return entry["id"]
 
-    def set_txt_records(self, zone_id, records):
+    def del_matching_record(self, domain, record_name, validation):
         """
-        Set one or more TXT records for a given zone and record name.
-            Multiple records allow multiple domains to be validated at the
-            same time.
-        """
-        assert all(entry['name'] == records[0]['name'] and entry['type'] == 'TXT' for entry in records)
-        logger.debug("insert with data: %s", records)
-        self._api_request(type='patch', action=f'/dns/v1/zones/{zone_id}', json=records)
-
-    def del_matching_records(self, domain, record_name):
-        """
-        Deletes any TXT records with matching record_name. Loops through all
-            records with that name and deletes them.
+        Deletes any TXT record with matching record_name and validation content.
         """
         zone_id, zone_name = self._find_managed_zone_id(domain)
         if zone_id is None:
             raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
-        entries = self.get_txt_records(zone_id, record_name)
-        for entry in entries:
-            primary_id = entry['id']
+        primary_id = self.get_matching_txt_record(zone_id, record_name, validation)
+        if primary_id is not None:
             logger.debug("delete id: %s", primary_id)
             self._api_request(type='delete', action=f'/dns/v1/zones/{zone_id}/records/{primary_id}')

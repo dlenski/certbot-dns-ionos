@@ -19,9 +19,9 @@ FAKE_PREFIX = "prefix"
 FAKE_SECRET = "secret"
 FAKE_ENDPOINT = "mock://endpoint"
 
-FAKE_RECORD_NAME = "foo" + str(randint(10000, 99999))
-FAKE_RECORD_CONTENT = "bar" + str(randint(10000, 99999))
-FAKE_PREEXISTING_RECORD_CONTENT = "baz" + str(randint(10000, 99999))
+FAKE_RECORD_NAME = f"foo{randint(10000, 99999)}"
+FAKE_RECORD_CONTENT = f"bar{randint(10000, 99999)}"
+FAKE_PREEXISTING_RECORD_CONTENT = f"baz{randint(10000, 99999)}"
 FAKE_RECORD_TTL = 42
 FAKE_ZONE_ID = str(uuid4())
 FAKE_RECORD_ID = str(uuid4())
@@ -61,7 +61,7 @@ class AuthenticatorTest(
 
         expected = [
             mock.call.add_txt_record(
-                DOMAIN, "_acme-challenge." + DOMAIN, mock.ANY, mock.ANY
+                DOMAIN, f"_acme-challenge.{DOMAIN}", mock.ANY, mock.ANY
             )
         ]
         self.assertEqual(expected, self.mock_client.mock_calls)
@@ -73,7 +73,7 @@ class AuthenticatorTest(
 
         expected = [
             mock.call.del_matching_records(
-                DOMAIN, "_acme-challenge." + DOMAIN
+                DOMAIN, f"_acme-challenge.{DOMAIN}"
             )
         ]
         self.assertEqual(expected, self.mock_client.mock_calls)
@@ -101,7 +101,7 @@ class ionosClientTest(unittest.TestCase):
                     "name": FAKE_RECORD_NAME,
                     "rootName": "string",
                     "type": "TXT",
-                    "content": "\"" + FAKE_PREEXISTING_RECORD_CONTENT + "\"",
+                    "content": f"\"{FAKE_PREEXISTING_RECORD_CONTENT}\"",
                     "changeDate": "1900-01-01T00:00:00.000Z",
                     "ttl": 0,
                     "prio": 0,
@@ -109,8 +109,8 @@ class ionosClientTest(unittest.TestCase):
                     }
                 ]
             }
-            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK", json=mock_response)
-            m.register_uri('PATCH', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK",
+            m.register_uri('GET', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK", json=mock_response)
+            m.register_uri('PATCH', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK",
                 additional_matcher=lambda req: all(
                     r["name"] == FAKE_RECORD_NAME and r["type"] == "TXT"
                     and (r["content"], r["ttl"]) in (
@@ -127,7 +127,7 @@ class ionosClientTest(unittest.TestCase):
         with requests_mock.Mocker() as m:
             mock_response = [{
                 "id": FAKE_ZONE_ID,
-                "name": "a-different-" + DOMAIN,
+                "name": f"a-different-{DOMAIN}",
                 "type": "NATIVE"}]
             m.register_uri('GET', 'mock://endpoint/dns/v1/zones', status_code=200, reason="OK", json=mock_response)
             with self.assertRaises(errors.PluginError) as context:
@@ -170,8 +170,8 @@ class ionosClientTest(unittest.TestCase):
                     }
                 ]
             }
-            m.register_uri('GET', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID, status_code=200, reason="OK", json=mock_response)
-            m.register_uri('DELETE', 'mock://endpoint/dns/v1/zones/' + FAKE_ZONE_ID + '/records/' + FAKE_RECORD_ID, status_code=200, reason="OK")
+            m.register_uri('GET', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}", status_code=200, reason="OK", json=mock_response)
+            m.register_uri('DELETE', f"mock://endpoint/dns/v1/zones/{FAKE_ZONE_ID}/records/{FAKE_RECORD_ID}", status_code=200, reason="OK")
             self.client.del_matching_records(
                 DOMAIN, FAKE_RECORD_NAME
             )

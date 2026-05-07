@@ -32,7 +32,7 @@ class Authenticator(dns_common.DNSAuthenticator):
     def more_info(self):  # pylint: disable=missing-docstring,no-self-use
         return (
             "This plugin configures a DNS TXT record to respond to a dns-01 challenge using "
-            + "the IONOS Remote REST API."
+            "the IONOS Remote REST API."
         )
 
     def _setup_credentials(self):
@@ -74,7 +74,7 @@ class _ionosClient(object):
         logger.debug("creating ionosclient")
         self.endpoint = endpoint
         self.session = requests.session()
-        self.session.headers['X-API-Key'] = prefix + '.' + secret
+        self.session.headers['X-API-Key'] = f"{prefix}.{secret}"
 
     def _find_managed_zone_id(self, domain):
         """
@@ -88,14 +88,9 @@ class _ionosClient(object):
         zones = self._api_request(type='get', action="/dns/v1/zones")
         logger.debug("zones found %s", zones)
         for zone in zones:
-            # get the zone id
-            if zone['name'] == domain:
-                return zone['id'], zone['name']
-        # if the domain does not exactly match one of the zones, check if it
-        # is a subdomain
-        for zone in zones:
-            # get the zone id
-            if domain.endswith(f".{zone['name']}"):
+            # the domain should either be an exact match or a subdomain of
+            # the zone name
+            if domain == zone['name'] or domain.endswith(f".{zone['name']}"):
                 return zone['id'], zone['name']
         return None, None
 
@@ -107,19 +102,18 @@ class _ionosClient(object):
         except requests.exceptions.HTTPError as exc:
             error_msg = resp.json()['message']
             raise errors.PluginError(
-                "HTTP Error during request {0}({1}): {2}".format(
-                    resp.reason, resp.status_code, error_msg)
+                f"HTTP Error during request {resp.reason}({resp.status_code}): {error_msg}"
             ) from exc
         if type == 'get':
             try:
                 return resp.json()
             except Exception as exc:
                 raise errors.PluginError(
-                    "Non-JSON API response: {0}".format(resp.text)
+                    f"Non-JSON API response: {resp.text}"
                 ) from exc
 
     def _get_url(self, action):
-        return "{0}{1}".format(self.endpoint, action)
+        return self.endpoint + action
 
     def add_txt_record(self, domain, record_name, record_content, record_ttl):
         """
@@ -135,39 +129,18 @@ class _ionosClient(object):
         if zone_id is None:
             raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
-        content, id = self.get_existing_txt(zone_id, record_name)
-        if content is not None:
-            if content == record_content:
-                logger.info("already there, id {0}".format(id))
-                return
-            else:
-                logger.info("adding additional record")
-                entries = self.clean_entries(self.get_existing_records(zone_id, record_name))
-                self.add_additional_record(
-                    zone_id, record_name, record_content, record_ttl, entries
-                )
+        entries = list(self.get_txt_records(zone_id, record_name))
+        if next((e['id'] for e in entries if e['content'] == record_content), None):
+            logger.info(f"already there, id {id}")
         else:
-            logger.info("insert new txt record")
-            self._insert_txt_record(zone_id, record_name, record_content, record_ttl)
+            if entries:
+                logger.info("adding additional record")
+            else:
+                logger.info("insert new txt record")
+            entries.append(dict(content=record_content, ttl=record_ttl, name=record_name, type='TXT'))
+            self.set_txt_records(zone_id, entries)
 
-    def _insert_txt_record(self, zone_id, record_name, record_content, record_ttl):
-        data = {}
-        data['disabled'] = False
-        data['type'] = 'TXT'
-        data['name'] = record_name
-        data['content'] = record_content
-        data['ttl'] = record_ttl
-        data['prio'] = 0
-        records = []
-        records.append(data)
-        logger.debug("insert with data: %s", data)
-        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), json=records)
-
-    def _delete_txt_record(self, zone_id, primary_id):
-        logger.debug("delete id: %s", primary_id)
-        self._api_request(type='delete', action='/dns/v1/zones/{0}/records/{1}'.format(zone_id,primary_id))
-
-    def get_existing_txt(self, zone_id, record_name):
+    def get_txt_records(self, zone_id, record_name):
         """
         Get existing TXT records from the RRset for the record name.
 
@@ -177,11 +150,9 @@ class _ionosClient(object):
         :param str zone_id: The ID of the managed zone.
         :param str record_name: The record name (typically beginning with '_acme-challenge.').
 
-        :returns: TXT record value or None, record id or None
-        :rtype: `string` or `None`, `string` or `None`
-
+        :yields: `dict` containing only the fields required to recreate each record
         """
-        zone_data = self._api_request(type='get', action='/dns/v1/zones/{0}'.format(zone_id))
+        zone_data = self._api_request(type='get', action=f'/dns/v1/zones/{zone_id}')
         for entry in zone_data['records']:
             if (
                 entry["name"] == record_name
@@ -195,53 +166,17 @@ class _ionosClient(object):
                     entry["content"] = content[1:-1]
                 else:
                     logger.warning("expected extra redundant quotes on TXT record contents, but not found")
-                return content, entry["id"]
-        return None, None
+                yield entry
 
-    def get_existing_records(self, zone_id, record_name):
+    def set_txt_records(self, zone_id, records):
         """
-        Pull a list of existing TXT records with the record_name
+        Set one or more TXT records for a given zone and record name.
+            Multiple records allow multiple domains to be validated at the
+            same time.
         """
-        zone_data = self._api_request(type='get', action='/dns/v1/zones/{0}'.format(zone_id))
-        results = []
-        for entry in zone_data['records']:
-            if entry["name"] == record_name and entry["type"] == "TXT":
-                results.append(entry)
-        return results
-
-    def clean_entries(self, entries):
-        """
-        Clean up existing DNS entries to prepare to write them back to the API
-            by only including certain keys and cleaning up the content.
-        """
-        results = []
-        for entry in entries:
-            results.append({
-                'name': entry['name'],
-                'type': entry['type'],
-                'content': entry['content'].replace('"', ''),  # Strip double-quotes
-                'ttl': entry['ttl'],
-                'disabled': entry['disabled'],
-            })
-        return results
-
-    def add_additional_record(self, zone_id, record_name, record_content, record_ttl, existing_records):
-        """
-        Add another TXT record with the record_name but with new content. This
-            is done to allow multiple domains to be validated at the same time.
-        existing_records is a list of existing records since we need to issue
-            a PATCH and include the existing records.
-        """
-        data = {}
-        data['disabled'] = False
-        data['type'] = 'TXT'
-        data['name'] = record_name
-        data['content'] = record_content
-        data['ttl'] = record_ttl
-        data['prio'] = 0
-        existing_records.append(data)
-        logger.debug("insert with data: %s", existing_records)
-        self._api_request(type='patch', action='/dns/v1/zones/{0}'.format(zone_id), json=existing_records)
+        assert all(entry['name'] == records[0]['name'] and entry['type'] == 'TXT' for entry in records)
+        logger.debug("insert with data: %s", records)
+        self._api_request(type='patch', action=f'/dns/v1/zones/{zone_id}', json=records)
 
     def del_matching_records(self, domain, record_name):
         """
@@ -252,6 +187,8 @@ class _ionosClient(object):
         if zone_id is None:
             raise errors.PluginError("Domain not known")
         logger.debug("domain found: %s with id: %s", zone_name, zone_id)
-        entries = self.get_existing_records(zone_id, record_name)
+        entries = self.get_txt_records(zone_id, record_name)
         for entry in entries:
-            self._delete_txt_record(zone_id, entry['id'])
+            primary_id = entry['id']
+            logger.debug("delete id: %s", primary_id)
+            self._api_request(type='delete', action=f'/dns/v1/zones/{zone_id}/records/{primary_id}')
